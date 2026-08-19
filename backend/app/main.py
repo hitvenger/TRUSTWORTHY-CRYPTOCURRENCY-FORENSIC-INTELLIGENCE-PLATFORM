@@ -88,17 +88,48 @@ app.add_middleware(
 )
 
 
+from fastapi.responses import JSONResponse, Response
+
 # Request timing & security header middleware
 @app.middleware("http")
 async def add_process_time_and_security_headers(request: Request, call_next):
     start_time = time.time()
-    response = await call_next(request)
+    try:
+        response = await call_next(request)
+    except Exception as exc:
+        import traceback
+        print(f"[!] Unhandled Request Exception: {traceback.format_exc()}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": "Internal Server Error",
+                "detail": str(exc),
+                "type": type(exc).__name__,
+                "path": request.url.path
+            }
+        )
     process_time = time.time() - start_time
     response.headers["X-Process-Time-Sec"] = f"{process_time:.4f}"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-XSS-Protection"] = "1; mode=block"
     return response
+
+
+# Global Exception Handler
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    import traceback
+    print(f"[!] Global Exception Handler: {traceback.format_exc()}")
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "Internal Server Error",
+            "detail": str(exc),
+            "type": type(exc).__name__,
+            "path": request.url.path
+        }
+    )
 
 
 # Include API Routers
@@ -114,6 +145,11 @@ app.include_router(dashboard.router, prefix=settings.API_V1_STR)
 app.include_router(graph.router, prefix=settings.API_V1_STR)
 app.include_router(blockchain.router, prefix=settings.API_V1_STR)
 app.include_router(audit.router, prefix=settings.API_V1_STR)
+
+
+@app.get("/favicon.ico")
+def favicon():
+    return Response(status_code=204)
 
 
 @app.get("/")
