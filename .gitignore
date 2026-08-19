@@ -82,3 +82,6 @@ reports/*.json
 reports/*.csv
 !reports/figures/
 !reports/figures/*.png
+
+# Deep Engineering Specification (local-only, never push)
+DES.md
