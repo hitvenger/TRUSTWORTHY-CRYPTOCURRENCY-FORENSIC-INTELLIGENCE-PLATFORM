@@ -14,7 +14,10 @@ import backend.app.models  # Import all models to ensure schema binding
 from backend.app.api.v1 import cases, evidence, transactions, analyst_review, reports, models, experiments, dashboard, graph, blockchain, audit, auth
 
 # Initialize tables
-Base.metadata.create_all(bind=engine)
+try:
+    Base.metadata.create_all(bind=engine)
+except Exception as e:
+    print(f"[!] Warning during table creation: {e}")
 
 app = FastAPI(
     title="TCF-FX Forensic Intelligence Platform API",
@@ -23,6 +26,57 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc"
 )
+
+
+@app.on_event("startup")
+def startup_event():
+    try:
+        Base.metadata.create_all(bind=engine)
+    except Exception:
+        pass
+    
+    # Auto-seed demo case and initial evidence if database is freshly created
+    try:
+        from backend.app.core.database import SessionLocal
+        from backend.app.models.case import Case
+        from backend.app.services.evidence_service import EvidenceService
+        from datasets.synthetic import generate_synthetic_dataset
+
+        db = SessionLocal()
+        try:
+            if db.query(Case).count() == 0:
+                demo_case = Case(
+                    case_id="case_operation_shadowchain",
+                    title="Operation ShadowChain — Illicit Layering & Mixer Investigation",
+                    description="Forensic investigation into peeling chains, high-velocity mixer pooling, and rapid asset drains.",
+                    investigator="Special Agent Vance",
+                    status="ACTIVE",
+                    priority="CRITICAL",
+                    tags=["RANSOMWARE", "PEELING_CHAIN", "MIXER", "TRIAGE_PRIORITY_1"]
+                )
+                db.add(demo_case)
+                db.commit()
+
+                sample_txs = generate_synthetic_dataset(num_transactions=20, seed=42)
+                for tx in sample_txs:
+                    EvidenceService.ingest_transaction_evidence(
+                        db=db,
+                        case_id=demo_case.case_id,
+                        transaction_id=tx["transaction_id"],
+                        source_wallet=tx["source_wallet"],
+                        destination_wallet=tx["destination_wallet"],
+                        amount=float(tx["amount"]),
+                        timestamp=float(tx["timestamp"]),
+                        source="LIVE_INGESTION_STREAM",
+                        source_identifier="MAINNET_NODE_01",
+                        actor="Agent Vance",
+                        role="INVESTIGATOR"
+                    )
+        finally:
+            db.close()
+    except Exception as e:
+        print(f"[*] Startup auto-seeding note: {e}")
+
 
 # CORS configuration
 app.add_middleware(
@@ -60,6 +114,19 @@ app.include_router(dashboard.router, prefix=settings.API_V1_STR)
 app.include_router(graph.router, prefix=settings.API_V1_STR)
 app.include_router(blockchain.router, prefix=settings.API_V1_STR)
 app.include_router(audit.router, prefix=settings.API_V1_STR)
+
+
+@app.get("/")
+def root():
+    return {
+        "platform": "TCF-FX — Trustworthy Cryptocurrency Forensic Intelligence Platform",
+        "status": "ONLINE",
+        "version": "1.0.0",
+        "docs": "/docs",
+        "health": "/health",
+        "api_v1": "/api/v1",
+        "axiom": "AI Output != Forensic Finding != Legal Conclusion"
+    }
 
 
 @app.get("/health")
