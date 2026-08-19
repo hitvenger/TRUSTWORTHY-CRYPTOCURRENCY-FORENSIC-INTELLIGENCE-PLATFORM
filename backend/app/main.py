@@ -57,7 +57,7 @@ def startup_event():
                 db.add(demo_case)
                 db.commit()
 
-                sample_txs = generate_synthetic_dataset(num_transactions=20, seed=42)
+                sample_txs = generate_synthetic_dataset(num_transactions=5, seed=42)
                 for tx in sample_txs:
                     EvidenceService.ingest_transaction_evidence(
                         db=db,

@@ -35,9 +35,9 @@ class ForensicPipelineRuntime:
         self._bootstrap_models()
 
     def _bootstrap_models(self):
-        """Initializes and pre-trains models on baseline calibration data."""
-        # Generate 1500 calibration samples
-        calib_txs = generate_synthetic_dataset(num_transactions=1500, seed=42)
+        """Initializes and pre-trains models on baseline calibration data with instant sub-second execution."""
+        # Fast calibration sample for instant cold-start (200 samples)
+        calib_txs = generate_synthetic_dataset(num_transactions=200, seed=42)
         enriched = self.graph_engine.process_transaction_stream(calib_txs)
         
         X_list = []
@@ -55,7 +55,7 @@ class ForensicPipelineRuntime:
         self.shap_explainer = ForensicShapExplainer(
             model=self.rf_model,
             feature_names=FEATURE_COLUMNS,
-            background_data=X[:100]
+            background_data=X[:30]
         )
         self.is_initialized = True
 

@@ -5,4 +5,4 @@ description = "TCF-FX: Trustworthy Cryptocurrency Forensic Intelligence Platform
 requires-python = ">=3.11"
 
 [tool.vercel]
-entrypoint = "backend.app.main:app"
+entrypoint = "api/index.py"
