@@ -22,7 +22,7 @@
       "destination": "/api/index.py"
     },
     {
-      "source": "/((?!assets/|.*\\..*).*)",
+      "source": "/((?!api/|docs|redoc|health|openapi.json|assets/|favicon\\.svg|.*\\..*).*)",
       "destination": "/index.html"
     }
   ]
