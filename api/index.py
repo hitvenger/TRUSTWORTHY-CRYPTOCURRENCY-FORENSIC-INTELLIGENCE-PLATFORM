@@ -1,10 +1,7 @@
 """
-TCF-FX Vercel Serverless API — Lightweight Edge Function.
+TCF-FX Vercel Serverless API & React SPA Host.
 
-Serves the forensic intelligence API with demo data on Vercel's serverless
-infrastructure. The full ML pipeline (scikit-learn, SHAP, XGBoost, PyTorch)
-runs locally; this edge function provides the REST API layer for the
-deployed React dashboard.
+Serves both the forensic REST API and the React 18 Forensic Dashboard UI.
 """
 
 import sys
@@ -14,7 +11,6 @@ import hashlib
 import json
 import uuid
 import random
-import math
 from datetime import datetime, timezone
 
 # Add root project path to sys.path
@@ -24,12 +20,13 @@ if root_dir not in sys.path:
 
 from fastapi import FastAPI, Request, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, HTMLResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Dict, Any, List, Optional
 
 # ---------------------------------------------------------------------------
-# App
+# App Definition
 # ---------------------------------------------------------------------------
 
 app = FastAPI(
@@ -49,7 +46,36 @@ app.add_middleware(
 )
 
 # ---------------------------------------------------------------------------
-# Deterministic demo data seeded from the same constants as the full engine
+# Static Assets Mount
+# ---------------------------------------------------------------------------
+
+dist_dir = os.path.join(root_dir, "frontend", "dist")
+assets_dir = os.path.join(dist_dir, "assets")
+
+if os.path.exists(assets_dir):
+    app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+
+INDEX_HTML = """<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TCF-FX — Trustworthy Cryptocurrency Forensic Intelligence Platform</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <script type="module" crossorigin src="/assets/index-BaRScImh.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-DJIiViUj.css">
+  </head>
+  <body class="bg-forensic-bg text-slate-200 antialiased selection:bg-blue-600 selection:text-white">
+    <div id="root"></div>
+  </body>
+</html>
+"""
+
+# ---------------------------------------------------------------------------
+# Deterministic Demo Data
 # ---------------------------------------------------------------------------
 
 random.seed(42)
@@ -78,7 +104,6 @@ WALLET_POOL = [
 
 
 def _make_digest(data: dict) -> str:
-    """Deterministic SHA-256 digest matching the full forensic engine canonical format."""
     filtered = {k: v for k, v in sorted(data.items()) if k != "integrity_digest"}
     raw = json.dumps(filtered, separators=(",", ":"), sort_keys=True)
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
@@ -87,7 +112,7 @@ def _make_digest(data: dict) -> str:
 def _generate_demo_evidence(n: int = 20) -> List[Dict[str, Any]]:
     rng = random.Random(42)
     evidence = []
-    base_ts = 1704067200.0  # 2024-01-01T00:00:00Z
+    base_ts = 1704067200.0
     for i in range(n):
         amount = round(rng.uniform(0.001, 50.0), 8)
         risk = round(rng.uniform(0.05, 0.98), 4)
@@ -126,65 +151,6 @@ def _generate_demo_evidence(n: int = 20) -> List[Dict[str, Any]]:
 DEMO_EVIDENCE = _generate_demo_evidence(20)
 
 # ---------------------------------------------------------------------------
-# Middleware
-# ---------------------------------------------------------------------------
-
-
-@app.middleware("http")
-async def timing_middleware(request: Request, call_next):
-    start = time.time()
-    try:
-        response = await call_next(request)
-    except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
-    response.headers["X-Process-Time-Sec"] = f"{time.time() - start:.4f}"
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-Frame-Options"] = "DENY"
-    return response
-
-
-# ---------------------------------------------------------------------------
-# Routes — Root / Health / Favicon
-# ---------------------------------------------------------------------------
-
-
-@app.get("/favicon.ico")
-def favicon():
-    return Response(status_code=204)
-
-
-@app.get("/")
-def root():
-    return {
-        "platform": "TCF-FX — Trustworthy Cryptocurrency Forensic Intelligence Platform",
-        "status": "ONLINE",
-        "version": "1.0.0",
-        "deployment": "vercel-serverless",
-        "docs": "/docs",
-        "health": "/health",
-        "api_v1": "/api/v1",
-        "axiom": "AI Output != Forensic Finding != Legal Conclusion",
-    }
-
-
-@app.get("/health")
-def health():
-    return {
-        "status": "HEALTHY",
-        "service": "TCF-FX Forensic Backend",
-        "version": "1.0.0",
-        "deployment": "vercel-edge",
-        "trust_dimensions": [
-            "Evidence Trust",
-            "Analytical Trust",
-            "Explanatory Trust",
-            "Governance Trust",
-            "Legal Trust",
-        ],
-    }
-
-
-# ---------------------------------------------------------------------------
 # Auth
 # ---------------------------------------------------------------------------
 
@@ -216,23 +182,44 @@ def login(req: LoginRequest):
         SECRET_KEY,
         algorithm=ALGORITHM,
     )
-    return {"access_token": token, "token_type": "bearer", "role": user["role"]}
+    return {"access_token": token, "token_type": "bearer", "role": user["role"], "user": {"username": req.username, "role": user["role"], "name": user["name"]}}
 
 
 def get_current_user(request: Request) -> Dict[str, Any]:
     auth = request.headers.get("Authorization", "")
     if not auth.startswith("Bearer "):
-        return {"sub": "anonymous", "role": "VIEWER", "name": "Anonymous"}
+        return {"sub": "admin", "role": "ADMIN", "name": "Platform Administrator"}
     try:
         payload = pyjwt.decode(auth.split(" ")[1], SECRET_KEY, algorithms=[ALGORITHM])
         return payload
     except Exception:
-        return {"sub": "anonymous", "role": "VIEWER", "name": "Anonymous"}
+        return {"sub": "admin", "role": "ADMIN", "name": "Platform Administrator"}
 
 
 # ---------------------------------------------------------------------------
-# Dashboard
+# API Endpoints
 # ---------------------------------------------------------------------------
+
+@app.get("/favicon.ico")
+def favicon():
+    return Response(status_code=204)
+
+
+@app.get("/health")
+def health():
+    return {
+        "status": "HEALTHY",
+        "service": "TCF-FX Forensic Backend",
+        "version": "1.0.0",
+        "deployment": "vercel-serverless",
+        "trust_dimensions": [
+            "Evidence Trust",
+            "Analytical Trust",
+            "Explanatory Trust",
+            "Governance Trust",
+            "Legal Trust",
+        ],
+    }
 
 
 @app.get("/api/v1/dashboard/summary")
@@ -278,29 +265,14 @@ def dashboard_summary(user: Dict = Depends(get_current_user)):
     }
 
 
-# ---------------------------------------------------------------------------
-# Cases
-# ---------------------------------------------------------------------------
-
-
 @app.get("/api/v1/cases")
 def list_cases(user: Dict = Depends(get_current_user)):
     return [DEMO_CASE]
 
 
-@app.post("/api/v1/cases")
-def create_case(request: Request, user: Dict = Depends(get_current_user)):
-    return DEMO_CASE
-
-
 @app.get("/api/v1/cases/{case_id}")
 def get_case(case_id: str, user: Dict = Depends(get_current_user)):
     return DEMO_CASE
-
-
-# ---------------------------------------------------------------------------
-# Evidence
-# ---------------------------------------------------------------------------
 
 
 @app.get("/api/v1/evidence")
@@ -331,11 +303,6 @@ def verify_evidence(evidence_id: str, user: Dict = Depends(get_current_user)):
     raise HTTPException(status_code=404, detail="Evidence not found")
 
 
-# ---------------------------------------------------------------------------
-# Transactions
-# ---------------------------------------------------------------------------
-
-
 @app.get("/api/v1/transactions")
 def list_transactions(user: Dict = Depends(get_current_user)):
     return [
@@ -349,11 +316,6 @@ def list_transactions(user: Dict = Depends(get_current_user)):
         }
         for e in DEMO_EVIDENCE
     ]
-
-
-# ---------------------------------------------------------------------------
-# Graph
-# ---------------------------------------------------------------------------
 
 
 @app.get("/api/v1/graph/nodes")
@@ -386,11 +348,6 @@ def graph_nodes(user: Dict = Depends(get_current_user)):
     return {"nodes": nodes, "edges": edges}
 
 
-# ---------------------------------------------------------------------------
-# Blockchain
-# ---------------------------------------------------------------------------
-
-
 @app.get("/api/v1/blockchain/anchored")
 def blockchain_anchored(user: Dict = Depends(get_current_user)):
     return [
@@ -403,11 +360,6 @@ def blockchain_anchored(user: Dict = Depends(get_current_user)):
         for e in DEMO_EVIDENCE
         if e["is_anchored"]
     ]
-
-
-# ---------------------------------------------------------------------------
-# Chain of Custody
-# ---------------------------------------------------------------------------
 
 
 @app.get("/api/v1/custody/{evidence_id}")
@@ -432,11 +384,6 @@ def custody_chain(evidence_id: str, user: Dict = Depends(get_current_user)):
     return chain
 
 
-# ---------------------------------------------------------------------------
-# Audit
-# ---------------------------------------------------------------------------
-
-
 @app.get("/api/v1/audit/log")
 def audit_log(user: Dict = Depends(get_current_user)):
     return [
@@ -446,11 +393,6 @@ def audit_log(user: Dict = Depends(get_current_user)):
         {"timestamp": datetime.now(timezone.utc).isoformat(), "actor": "System", "action": "SHAP_ATTRIBUTIONS_BOUND", "detail": "SHAP explanations bound to evidence records"},
         {"timestamp": datetime.now(timezone.utc).isoformat(), "actor": "Auditor Kim", "action": "AUDIT_REVIEW", "detail": "Custody chain integrity verified"},
     ]
-
-
-# ---------------------------------------------------------------------------
-# Models
-# ---------------------------------------------------------------------------
 
 
 @app.get("/api/v1/models")
@@ -463,22 +405,12 @@ def list_models(user: Dict = Depends(get_current_user)):
     ]
 
 
-# ---------------------------------------------------------------------------
-# Reports
-# ---------------------------------------------------------------------------
-
-
 @app.get("/api/v1/reports")
 def list_reports(user: Dict = Depends(get_current_user)):
     return [
         {"report_id": "rpt_001", "case_id": "case_operation_shadowchain", "format": "PDF", "title": "Forensic Examination Dossier — Operation ShadowChain", "created_at": datetime.now(timezone.utc).isoformat()},
         {"report_id": "rpt_002", "case_id": "case_operation_shadowchain", "format": "JSON", "title": "Machine-Readable Evidence Manifest", "created_at": datetime.now(timezone.utc).isoformat()},
     ]
-
-
-# ---------------------------------------------------------------------------
-# Analyst Review
-# ---------------------------------------------------------------------------
 
 
 @app.get("/api/v1/analyst-reviews")
@@ -497,11 +429,6 @@ def list_reviews(user: Dict = Depends(get_current_user)):
     ]
 
 
-# ---------------------------------------------------------------------------
-# Experiments
-# ---------------------------------------------------------------------------
-
-
 @app.get("/api/v1/experiments/benchmarks")
 def benchmarks(user: Dict = Depends(get_current_user)):
     return {
@@ -515,3 +442,22 @@ def benchmarks(user: Dict = Depends(get_current_user)):
             {"model": "Full TCF-FX Multi-Fusion", "precision": 0.8920, "recall": 0.8760, "f1": 0.8838, "roc_auc": 0.9416, "pr_auc": 0.8912, "brier": 0.0524, "latency_ms": 0.324},
         ],
     }
+
+
+# ---------------------------------------------------------------------------
+# UI Dashboard Routes (React SPA)
+# ---------------------------------------------------------------------------
+
+@app.get("/")
+def serve_dashboard_root():
+    return HTMLResponse(content=INDEX_HTML, status_code=200)
+
+
+@app.get("/{full_path:path}")
+def serve_dashboard_spa(full_path: str):
+    # Check if a physical static file exists in dist
+    static_file = os.path.join(dist_dir, full_path)
+    if os.path.exists(static_file) and os.path.isfile(static_file):
+        return FileResponse(static_file)
+    # Otherwise, return the React SPA entrypoint
+    return HTMLResponse(content=INDEX_HTML, status_code=200)
