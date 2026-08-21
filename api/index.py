@@ -1,7 +1,7 @@
 """
-TCF-FX Vercel Serverless API & React SPA Host.
+TCF-FX Vercel Serverless API.
 
-Serves both the forensic REST API and the React 18 Forensic Dashboard UI.
+Serves the forensic REST API with multi-prefix routing resilience.
 """
 
 import sys
@@ -18,12 +18,12 @@ root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if root_dir not in sys.path:
     sys.path.insert(0, root_dir)
 
-from fastapi import FastAPI, Request, Depends, HTTPException
+from fastapi import FastAPI, APIRouter, Request, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response, HTMLResponse, FileResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 from typing import Dict, Any, List, Optional
+import jwt as pyjwt
 
 # ---------------------------------------------------------------------------
 # App Definition
@@ -44,6 +44,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+SECRET_KEY = os.getenv("SECRET_KEY", "tcf_fx_super_secret_forensic_key_2026_salt_9981")
+ALGORITHM = "HS256"
+
+DEMO_USERS = {
+    "admin": {"password": "admin", "role": "ADMIN", "name": "Platform Administrator"},
+    "investigator": {"password": "investigator", "role": "INVESTIGATOR", "name": "Special Agent Vance"},
+    "analyst": {"password": "analyst", "role": "ANALYST", "name": "Forensic Analyst Chen"},
+    "auditor": {"password": "auditor", "role": "AUDITOR", "name": "Compliance Auditor Kim"},
+}
 
 # ---------------------------------------------------------------------------
 # Deterministic Demo Data
@@ -121,39 +131,10 @@ def _generate_demo_evidence(n: int = 20) -> List[Dict[str, Any]]:
 
 DEMO_EVIDENCE = _generate_demo_evidence(20)
 
-# ---------------------------------------------------------------------------
-# Auth
-# ---------------------------------------------------------------------------
-
-import jwt as pyjwt
-
-SECRET_KEY = os.getenv("SECRET_KEY", "tcf_fx_super_secret_forensic_key_2026_salt_9981")
-ALGORITHM = "HS256"
-
-DEMO_USERS = {
-    "admin": {"password": "admin", "role": "ADMIN", "name": "Platform Administrator"},
-    "investigator": {"password": "investigator", "role": "INVESTIGATOR", "name": "Special Agent Vance"},
-    "analyst": {"password": "analyst", "role": "ANALYST", "name": "Forensic Analyst Chen"},
-    "auditor": {"password": "auditor", "role": "AUDITOR", "name": "Compliance Auditor Kim"},
-}
-
 
 class LoginRequest(BaseModel):
     username: str
     password: str
-
-
-@app.post("/api/v1/auth/login")
-def login(req: LoginRequest):
-    user = DEMO_USERS.get(req.username)
-    if not user or user["password"] != req.password:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-    token = pyjwt.encode(
-        {"sub": req.username, "role": user["role"], "name": user["name"]},
-        SECRET_KEY,
-        algorithm=ALGORITHM,
-    )
-    return {"access_token": token, "token_type": "bearer", "role": user["role"], "user": {"username": req.username, "role": user["role"], "name": user["name"]}}
 
 
 def get_current_user(request: Request) -> Dict[str, Any]:
@@ -168,32 +149,31 @@ def get_current_user(request: Request) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# API Endpoints
+# API Router with Multi-Prefix Support
 # ---------------------------------------------------------------------------
 
-@app.get("/favicon.ico")
-def favicon():
-    return Response(status_code=204)
+api_router = APIRouter()
 
 
-@app.get("/health")
-def health():
+@api_router.post("/auth/login")
+def login(req: LoginRequest):
+    user = DEMO_USERS.get(req.username)
+    if not user or user["password"] != req.password:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    token = pyjwt.encode(
+        {"sub": req.username, "role": user["role"], "name": user["name"]},
+        SECRET_KEY,
+        algorithm=ALGORITHM,
+    )
     return {
-        "status": "HEALTHY",
-        "service": "TCF-FX Forensic Backend",
-        "version": "1.0.0",
-        "deployment": "vercel-serverless",
-        "trust_dimensions": [
-            "Evidence Trust",
-            "Analytical Trust",
-            "Explanatory Trust",
-            "Governance Trust",
-            "Legal Trust",
-        ],
+        "access_token": token,
+        "token_type": "bearer",
+        "role": user["role"],
+        "user": {"username": req.username, "role": user["role"], "name": user["name"]}
     }
 
 
-@app.get("/api/v1/dashboard/summary")
+@api_router.get("/dashboard/summary")
 def dashboard_summary(user: Dict = Depends(get_current_user)):
     high_risk = [e for e in DEMO_EVIDENCE if e["risk_score"] >= 0.65]
     critical = [e for e in DEMO_EVIDENCE if e["risk_score"] >= 0.80]
@@ -236,22 +216,22 @@ def dashboard_summary(user: Dict = Depends(get_current_user)):
     }
 
 
-@app.get("/api/v1/cases")
+@api_router.get("/cases")
 def list_cases(user: Dict = Depends(get_current_user)):
     return [DEMO_CASE]
 
 
-@app.get("/api/v1/cases/{case_id}")
+@api_router.get("/cases/{case_id}")
 def get_case(case_id: str, user: Dict = Depends(get_current_user)):
     return DEMO_CASE
 
 
-@app.get("/api/v1/evidence")
+@api_router.get("/evidence")
 def list_evidence(user: Dict = Depends(get_current_user)):
     return DEMO_EVIDENCE
 
 
-@app.get("/api/v1/evidence/{evidence_id}")
+@api_router.get("/evidence/{evidence_id}")
 def get_evidence(evidence_id: str, user: Dict = Depends(get_current_user)):
     for e in DEMO_EVIDENCE:
         if e["evidence_id"] == evidence_id:
@@ -259,7 +239,7 @@ def get_evidence(evidence_id: str, user: Dict = Depends(get_current_user)):
     raise HTTPException(status_code=404, detail="Evidence not found")
 
 
-@app.get("/api/v1/evidence/{evidence_id}/verify")
+@api_router.get("/evidence/{evidence_id}/verify")
 def verify_evidence(evidence_id: str, user: Dict = Depends(get_current_user)):
     for e in DEMO_EVIDENCE:
         if e["evidence_id"] == evidence_id:
@@ -274,7 +254,7 @@ def verify_evidence(evidence_id: str, user: Dict = Depends(get_current_user)):
     raise HTTPException(status_code=404, detail="Evidence not found")
 
 
-@app.get("/api/v1/transactions")
+@api_router.get("/transactions")
 def list_transactions(user: Dict = Depends(get_current_user)):
     return [
         {
@@ -289,7 +269,7 @@ def list_transactions(user: Dict = Depends(get_current_user)):
     ]
 
 
-@app.get("/api/v1/graph/nodes")
+@api_router.get("/graph/nodes")
 def graph_nodes(user: Dict = Depends(get_current_user)):
     wallets = set()
     for e in DEMO_EVIDENCE:
@@ -319,7 +299,7 @@ def graph_nodes(user: Dict = Depends(get_current_user)):
     return {"nodes": nodes, "edges": edges}
 
 
-@app.get("/api/v1/blockchain/anchored")
+@api_router.get("/blockchain/anchored")
 def blockchain_anchored(user: Dict = Depends(get_current_user)):
     return [
         {
@@ -333,7 +313,7 @@ def blockchain_anchored(user: Dict = Depends(get_current_user)):
     ]
 
 
-@app.get("/api/v1/custody/{evidence_id}")
+@api_router.get("/custody/{evidence_id}")
 def custody_chain(evidence_id: str, user: Dict = Depends(get_current_user)):
     actions = ["ACQUISITION", "AI_ANALYSIS", "INTEGRITY_SEALED"]
     chain = []
@@ -355,7 +335,7 @@ def custody_chain(evidence_id: str, user: Dict = Depends(get_current_user)):
     return chain
 
 
-@app.get("/api/v1/audit/log")
+@api_router.get("/audit/log")
 def audit_log(user: Dict = Depends(get_current_user)):
     return [
         {"timestamp": datetime.now(timezone.utc).isoformat(), "actor": "Agent Vance", "action": "CASE_CREATED", "detail": "Created Operation ShadowChain"},
@@ -366,7 +346,7 @@ def audit_log(user: Dict = Depends(get_current_user)):
     ]
 
 
-@app.get("/api/v1/models")
+@api_router.get("/models")
 def list_models(user: Dict = Depends(get_current_user)):
     return [
         {"model_id": "model_rf_baseline", "name": "Forensic Random Forest", "version": "1.0.0", "type": "supervised", "n_estimators": 250, "max_depth": 12, "status": "ACTIVE"},
@@ -376,7 +356,7 @@ def list_models(user: Dict = Depends(get_current_user)):
     ]
 
 
-@app.get("/api/v1/reports")
+@api_router.get("/reports")
 def list_reports(user: Dict = Depends(get_current_user)):
     return [
         {"report_id": "rpt_001", "case_id": "case_operation_shadowchain", "format": "PDF", "title": "Forensic Examination Dossier — Operation ShadowChain", "created_at": datetime.now(timezone.utc).isoformat()},
@@ -384,7 +364,7 @@ def list_reports(user: Dict = Depends(get_current_user)):
     ]
 
 
-@app.get("/api/v1/analyst-reviews")
+@api_router.get("/analyst-reviews")
 def list_reviews(user: Dict = Depends(get_current_user)):
     findings = [e for e in DEMO_EVIDENCE if e["analyst_status"] == "FORENSIC_FINDING"]
     return [
@@ -400,7 +380,7 @@ def list_reviews(user: Dict = Depends(get_current_user)):
     ]
 
 
-@app.get("/api/v1/experiments/benchmarks")
+@api_router.get("/experiments/benchmarks")
 def benchmarks(user: Dict = Depends(get_current_user)):
     return {
         "seeds": [7, 19, 31, 43, 59],
@@ -415,8 +395,36 @@ def benchmarks(user: Dict = Depends(get_current_user)):
     }
 
 
+# Include Router with all possible prefixes so it matches 100% of requests
+app.include_router(api_router, prefix="/api/v1")
+app.include_router(api_router, prefix="/v1")
+app.include_router(api_router, prefix="/api")
+
+
+@app.get("/favicon.ico")
+def favicon():
+    return Response(status_code=204)
+
+
+@app.get("/health")
+def health():
+    return {
+        "status": "HEALTHY",
+        "service": "TCF-FX Forensic Backend",
+        "version": "1.0.0",
+        "deployment": "vercel-serverless",
+        "trust_dimensions": [
+            "Evidence Trust",
+            "Analytical Trust",
+            "Explanatory Trust",
+            "Governance Trust",
+            "Legal Trust",
+        ],
+    }
+
+
 @app.get("/")
-def api_root():
+def root():
     return {
         "platform": "TCF-FX Forensic Intelligence Platform API",
         "status": "ONLINE",
