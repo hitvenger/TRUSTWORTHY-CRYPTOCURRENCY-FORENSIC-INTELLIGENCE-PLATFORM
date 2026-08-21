@@ -3,6 +3,3 @@ name = "tcf-fx"
 version = "1.0.0"
 description = "TCF-FX: Trustworthy Cryptocurrency Forensic Intelligence Platform"
 requires-python = ">=3.11"
-
-[tool.vercel]
-entrypoint = "api.index:app"

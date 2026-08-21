@@ -12,6 +12,10 @@
       "destination": "/api/index.py"
     },
     {
+      "source": "/redoc",
+      "destination": "/api/index.py"
+    },
+    {
       "source": "/health",
       "destination": "/api/index.py"
     },
@@ -20,8 +24,8 @@
       "destination": "/api/index.py"
     },
     {
-      "source": "/(.*)",
-      "destination": "/index.html"
+      "source": "/favicon.ico",
+      "destination": "/api/index.py"
     }
   ]
 }
