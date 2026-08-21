@@ -13,7 +13,7 @@ from forensic_engine.canonical import canonical_json_dumps
 try:
     import shap
     HAS_SHAP = True
-except ImportError:
+except Exception:
     HAS_SHAP = False
 
 

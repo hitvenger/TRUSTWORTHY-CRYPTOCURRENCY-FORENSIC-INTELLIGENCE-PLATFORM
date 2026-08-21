@@ -12,7 +12,7 @@ from forensic_engine.ml.base import BaseForensicModel
 try:
     import xgboost as xgb
     HAS_NATIVE_XGB = True
-except ImportError:
+except Exception:
     HAS_NATIVE_XGB = False
     from sklearn.ensemble import HistGradientBoostingClassifier
 
