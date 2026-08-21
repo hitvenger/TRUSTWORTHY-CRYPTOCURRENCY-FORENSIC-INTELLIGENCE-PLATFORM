@@ -46,48 +46,6 @@ app.add_middleware(
 )
 
 # ---------------------------------------------------------------------------
-# Static Assets Handler (Explicit MIME Types for JS / CSS)
-# ---------------------------------------------------------------------------
-
-api_dir = os.path.dirname(os.path.abspath(__file__))
-api_assets_dir = os.path.join(api_dir, "assets")
-dist_dir = os.path.join(root_dir, "frontend", "dist")
-
-
-@app.get("/assets/{filename:path}")
-def serve_asset(filename: str):
-    file_path = os.path.join(api_assets_dir, filename)
-    if not (os.path.exists(file_path) and os.path.isfile(file_path)):
-        file_path = os.path.join(dist_dir, "assets", filename)
-    if os.path.exists(file_path) and os.path.isfile(file_path):
-        media_type = "application/javascript" if filename.endswith(".js") else \
-                     "text/css" if filename.endswith(".css") else \
-                     "image/svg+xml" if filename.endswith(".svg") else \
-                     "image/png" if filename.endswith(".png") else "application/octet-stream"
-        return FileResponse(file_path, media_type=media_type)
-    raise HTTPException(status_code=404, detail="Asset not found")
-
-
-INDEX_HTML = """<!doctype html>
-<html lang="en" class="dark">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>TCF-FX — Trustworthy Cryptocurrency Forensic Intelligence Platform</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-    <script type="module" crossorigin src="/assets/index-BaRScImh.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-DJIiViUj.css">
-  </head>
-  <body class="bg-forensic-bg text-slate-200 antialiased selection:bg-blue-600 selection:text-white">
-    <div id="root"></div>
-  </body>
-</html>
-"""
-
-# ---------------------------------------------------------------------------
 # Deterministic Demo Data
 # ---------------------------------------------------------------------------
 
@@ -457,20 +415,12 @@ def benchmarks(user: Dict = Depends(get_current_user)):
     }
 
 
-# ---------------------------------------------------------------------------
-# UI Dashboard Routes (React SPA)
-# ---------------------------------------------------------------------------
-
 @app.get("/")
-def serve_dashboard_root():
-    return HTMLResponse(content=INDEX_HTML, status_code=200)
-
-
-@app.get("/{full_path:path}")
-def serve_dashboard_spa(full_path: str):
-    # Check if a physical static file exists in dist
-    static_file = os.path.join(dist_dir, full_path)
-    if os.path.exists(static_file) and os.path.isfile(static_file):
-        return FileResponse(static_file)
-    # Otherwise, return the React SPA entrypoint
-    return HTMLResponse(content=INDEX_HTML, status_code=200)
+def api_root():
+    return {
+        "platform": "TCF-FX Forensic Intelligence Platform API",
+        "status": "ONLINE",
+        "version": "1.0.0",
+        "docs": "/docs",
+        "health": "/health"
+    }
