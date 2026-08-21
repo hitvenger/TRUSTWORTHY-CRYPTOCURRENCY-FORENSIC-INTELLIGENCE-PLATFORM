@@ -46,14 +46,27 @@ app.add_middleware(
 )
 
 # ---------------------------------------------------------------------------
-# Static Assets Mount
+# Static Assets Handler (Explicit MIME Types for JS / CSS)
 # ---------------------------------------------------------------------------
 
+api_dir = os.path.dirname(os.path.abspath(__file__))
+api_assets_dir = os.path.join(api_dir, "assets")
 dist_dir = os.path.join(root_dir, "frontend", "dist")
-assets_dir = os.path.join(dist_dir, "assets")
 
-if os.path.exists(assets_dir):
-    app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+
+@app.get("/assets/{filename:path}")
+def serve_asset(filename: str):
+    file_path = os.path.join(api_assets_dir, filename)
+    if not (os.path.exists(file_path) and os.path.isfile(file_path)):
+        file_path = os.path.join(dist_dir, "assets", filename)
+    if os.path.exists(file_path) and os.path.isfile(file_path):
+        media_type = "application/javascript" if filename.endswith(".js") else \
+                     "text/css" if filename.endswith(".css") else \
+                     "image/svg+xml" if filename.endswith(".svg") else \
+                     "image/png" if filename.endswith(".png") else "application/octet-stream"
+        return FileResponse(file_path, media_type=media_type)
+    raise HTTPException(status_code=404, detail="Asset not found")
+
 
 INDEX_HTML = """<!doctype html>
 <html lang="en" class="dark">
