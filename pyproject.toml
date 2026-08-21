@@ -2,4 +2,12 @@
 name = "tcf-fx"
 version = "1.0.0"
 description = "TCF-FX: Trustworthy Cryptocurrency Forensic Intelligence Platform"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.0",
+    "pydantic>=2.8.0",
+    "pydantic-settings>=2.4.0",
+    "sqlalchemy>=2.0.30",
+    "pyjwt>=2.9.0",
+    "python-multipart>=0.0.9",
+]
